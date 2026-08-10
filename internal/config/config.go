@@ -2,6 +2,7 @@ package config
 
 import (
 	"goedd/internal/rpc"
+	"goedd/internal/web"
 	"os"
 	"time"
 
