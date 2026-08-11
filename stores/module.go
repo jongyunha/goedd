@@ -2,7 +2,9 @@ package stores
 
 import (
 	"context"
+	"goedd/internal/ddd"
 	"goedd/internal/di"
+	"goedd/internal/jetstream"
 	"goedd/internal/registry"
 	"goedd/internal/system"
 	"goedd/stores/internal/constants"
@@ -22,7 +24,13 @@ func Root(ctx context.Context, svc system.Service) (err error) {
 		}
 		return reg, nil
 	})
-
+	_ = jetstream.NewStream(svc.Config().Nats.Stream, svc.JS(), svc.Logger())
+	container.AddSingleton(constants.DomainDispatcherKey, func(c di.Container) (any, error) {
+		return ddd.NewEventDispatcher[ddd.Event](), nil
+	})
+	container.AddScoped(constants.DatabaseTransactionKey, func(c di.Container) (any, error) {
+		return svc.DB().Begin()
+	})
 	return
 }
 
