@@ -2,11 +2,18 @@ package stores
 
 import (
 	"context"
+	"database/sql"
+	"goedd/internal/am"
+	"goedd/internal/amotel"
+	"goedd/internal/amprom"
 	"goedd/internal/ddd"
 	"goedd/internal/di"
 	"goedd/internal/jetstream"
+	pg "goedd/internal/postgres"
+	"goedd/internal/postgresotel"
 	"goedd/internal/registry"
 	"goedd/internal/system"
+	"goedd/internal/tm"
 	"goedd/stores/internal/constants"
 	"goedd/stores/storespb"
 )
@@ -24,12 +31,36 @@ func Root(ctx context.Context, svc system.Service) (err error) {
 		}
 		return reg, nil
 	})
-	_ = jetstream.NewStream(svc.Config().Nats.Stream, svc.JS(), svc.Logger())
+	stream := jetstream.NewStream(svc.Config().Nats.Stream, svc.JS(), svc.Logger())
 	container.AddSingleton(constants.DomainDispatcherKey, func(c di.Container) (any, error) {
 		return ddd.NewEventDispatcher[ddd.Event](), nil
 	})
 	container.AddScoped(constants.DatabaseTransactionKey, func(c di.Container) (any, error) {
 		return svc.DB().Begin()
+	})
+	sentCounter := amprom.SentMessagesCounter(constants.ServiceName)
+	container.AddScoped(constants.MessagePublisherKey, func(c di.Container) (any, error) {
+		tx := postgresotel.Trace(c.Get(constants.DatabaseTransactionKey).(*sql.Tx))
+		outboxStore := pg.NewOutboxStore(constants.OutboxTableName, tx)
+		return am.NewMessagePublisher(
+			stream,
+			amotel.OtelMessageContextInjector(),
+			sentCounter,
+			tm.OutboxPublisher(outboxStore),
+		), nil
+	})
+	container.AddSingleton(constants.MessageSubscriberKey, func(c di.Container) (any, error) {
+		return am.NewMessageSubscriber(
+			stream,
+			amotel.OtelMessageContextExtractor(),
+			amprom.ReceivedMessagesCounter(constants.ServiceName),
+		), nil
+	})
+	container.AddScoped(constants.EventPublisherKey, func(c di.Container) (any, error) {
+		return am.NewEventPublisher(
+			c.Get(constants.RegistryKey).(registry.Registry),
+			c.Get(constants.MessagePublisherKey).(am.MessagePublisher),
+		), nil
 	})
 	return
 }
