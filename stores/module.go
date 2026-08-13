@@ -3,11 +3,13 @@ package stores
 import (
 	"context"
 	"database/sql"
+
 	"goedd/internal/am"
 	"goedd/internal/amotel"
 	"goedd/internal/amprom"
 	"goedd/internal/ddd"
 	"goedd/internal/di"
+	"goedd/internal/es"
 	"goedd/internal/jetstream"
 	pg "goedd/internal/postgres"
 	"goedd/internal/postgresotel"
@@ -61,6 +63,11 @@ func Root(ctx context.Context, svc system.Service) (err error) {
 			c.Get(constants.RegistryKey).(registry.Registry),
 			c.Get(constants.MessagePublisherKey).(am.MessagePublisher),
 		), nil
+	})
+	container.AddScoped(constants.AggregateStoreKey, func(c di.Container) (any, error) {
+		tx := postgresotel.Trace(c.Get(constants.DatabaseTransactionKey).(*sql.Tx))
+		reg := c.Get(constants.RegistryKey).(registry.Registry)
+		return es.NewAggregateStoreWithMiddleware(), nil
 	})
 	return
 }
