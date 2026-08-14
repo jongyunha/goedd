@@ -3,6 +3,8 @@ package stores
 import (
 	"context"
 	"database/sql"
+	"goedd/stores/internal/domain"
+	"goedd/stores/internal/postgres"
 
 	"goedd/internal/am"
 	"goedd/internal/amotel"
@@ -67,7 +69,36 @@ func Root(ctx context.Context, svc system.Service) (err error) {
 	container.AddScoped(constants.AggregateStoreKey, func(c di.Container) (any, error) {
 		tx := postgresotel.Trace(c.Get(constants.DatabaseTransactionKey).(*sql.Tx))
 		reg := c.Get(constants.RegistryKey).(registry.Registry)
-		return es.NewAggregateStoreWithMiddleware(), nil
+		return es.AggregateStoreWithMiddleware(
+			pg.NewEventStore(constants.EventsTableName, tx, reg),
+			pg.NewSnapshotStore(constants.SnapshotsTableName, tx, reg),
+		), nil
+	})
+	container.AddScoped(constants.StoresRepoKey, func(c di.Container) (any, error) {
+		return es.NewAggregateRepository[*domain.Store](
+			domain.StoreAggregate,
+			c.Get(constants.RegistryKey).(registry.Registry),
+			c.Get(constants.AggregateStoreKey).(es.AggregateStore),
+		), nil
+	})
+	container.AddScoped(constants.ProductsRepoKey, func(c di.Container) (any, error) {
+		return es.NewAggregateRepository[*domain.Product](
+			domain.ProductAggregate,
+			c.Get(constants.RegistryKey).(registry.Registry),
+			c.Get(constants.AggregateStoreKey).(es.AggregateStore),
+		), nil
+	})
+	container.AddScoped(constants.CatalogRepoKey, func(c di.Container) (any, error) {
+		return postgres.NewCatalogRepository(
+			constants.CatalogTableName,
+			postgresotel.Trace(c.Get(constants.DatabaseTransactionKey).(*sql.Tx)),
+		), nil
+	})
+	container.AddScoped(constants.MallRepoKey, func(c di.Container) (any, error) {
+		return postgres.NewMallRepository(
+			constants.MallTableName,
+			postgresotel.Trace(c.Get(constants.DatabaseTransactionKey).(*sql.Tx)),
+		), nil
 	})
 	return
 }
