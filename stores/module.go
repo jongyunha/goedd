@@ -3,6 +3,8 @@ package stores
 import (
 	"context"
 	"database/sql"
+	"goedd/internal/registry/serdes"
+	"goedd/stores/internal/application"
 	"goedd/stores/internal/domain"
 	"goedd/stores/internal/postgres"
 
@@ -100,9 +102,75 @@ func Root(ctx context.Context, svc system.Service) (err error) {
 			postgresotel.Trace(c.Get(constants.DatabaseTransactionKey).(*sql.Tx)),
 		), nil
 	})
+
+	container.AddScoped(constants.ApplicationKey, func(c di.Container) (any, error) {
+		return application.New(
+			c.Get(constants.StoresRepoKey).(domain.StoreRepository),
+			c.Get(constants.CatalogRepoKey).(domain.CatalogRepository),
+			c.Get(constants.MallRepoKey).(domain.MallRepository),
+			c.Get(constants.DomainDispatcherKey).(ddd.EventPublisher[ddd.Event]),
+		), nil
+	})
 	return
 }
 
 func registrations(reg registry.Registry) (err error) {
+	serde := serdes.NewJsonSerde(reg)
+
+	// Store
+	if err = serde.Register(domain.Store{}, func(v any) error {
+		store := v.(*domain.Store)
+		store.Aggregate = es.NewAggregate("", domain.StoreAggregate)
+		return nil
+	}); err != nil {
+		return
+	}
+	// store events
+	if err = serde.Register(domain.StoreCreated{}); err != nil {
+		return
+	}
+	if err = serde.RegisterKey(domain.StoreParticipationEnabledEvent, domain.StoreParticipationToggled{}); err != nil {
+		return
+	}
+	if err = serde.RegisterKey(domain.StoreParticipationDisabledEvent, domain.StoreParticipationToggled{}); err != nil {
+		return
+	}
+	if err = serde.Register(domain.StoreRebranded{}); err != nil {
+		return
+	}
+	// store snapshots
+	if err = serde.RegisterKey(domain.StoreV1{}.SnapshotName(), domain.StoreV1{}); err != nil {
+		return
+	}
+
+	// Product
+	if err = serde.Register(domain.Product{}, func(v any) error {
+		store := v.(*domain.Product)
+		store.Aggregate = es.NewAggregate("", domain.ProductAggregate)
+		return nil
+	}); err != nil {
+		return
+	}
+	// product events
+	if err = serde.Register(domain.ProductAdded{}); err != nil {
+		return
+	}
+	if err = serde.Register(domain.ProductRebranded{}); err != nil {
+		return
+	}
+	if err = serde.RegisterKey(domain.ProductPriceIncreasedEvent, domain.ProductPriceChanged{}); err != nil {
+		return
+	}
+	if err = serde.RegisterKey(domain.ProductPriceDecreasedEvent, domain.ProductPriceChanged{}); err != nil {
+		return
+	}
+	if err = serde.Register(domain.ProductRemoved{}); err != nil {
+		return
+	}
+	// product snapshots
+	if err = serde.RegisterKey(domain.ProductV1{}.SnapshotName(), domain.ProductV1{}); err != nil {
+		return
+	}
+
 	return
 }
