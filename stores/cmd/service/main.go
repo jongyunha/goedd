@@ -31,7 +31,7 @@ func run() (err error) {
 		return err
 	}
 	defer func(db *sql.DB) {
-		if err = db.Close(); err != nil {
+		if dbCloseErr := db.Close(); dbCloseErr != nil {
 			return
 		}
 	}(s.DB())

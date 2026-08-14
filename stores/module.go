@@ -6,7 +6,10 @@ import (
 	"goedd/internal/registry/serdes"
 	"goedd/stores/internal/application"
 	"goedd/stores/internal/domain"
+	"goedd/stores/internal/grpc"
+	"goedd/stores/internal/handlers"
 	"goedd/stores/internal/postgres"
+	"goedd/stores/internal/rest"
 
 	"goedd/internal/am"
 	"goedd/internal/amotel"
@@ -22,6 +25,8 @@ import (
 	"goedd/internal/tm"
 	"goedd/stores/internal/constants"
 	"goedd/stores/storespb"
+
+	"github.com/rs/zerolog"
 )
 
 func Root(ctx context.Context, svc system.Service) (err error) {
@@ -111,6 +116,36 @@ func Root(ctx context.Context, svc system.Service) (err error) {
 			c.Get(constants.DomainDispatcherKey).(ddd.EventPublisher[ddd.Event]),
 		), nil
 	})
+	container.AddScoped(constants.CatalogHandlersKey, func(c di.Container) (any, error) {
+		return handlers.NewCatalogHandlers(c.Get(constants.CatalogRepoKey).(domain.CatalogRepository)), nil
+	})
+	container.AddScoped(constants.MallHandlersKey, func(c di.Container) (any, error) {
+		return handlers.NewMallHandlers(c.Get(constants.MallRepoKey).(domain.MallRepository)), nil
+	})
+	container.AddScoped(constants.DomainEventHandlersKey, func(c di.Container) (any, error) {
+		return handlers.NewDomainEventHandlers(c.Get(constants.EventPublisherKey).(am.EventPublisher)), nil
+	})
+	outboxProcessor := tm.NewOutboxProcessor(
+		stream,
+		pg.NewOutboxStore(constants.OutboxTableName, svc.DB()),
+	)
+	// setup Driver adapters
+	if err = grpc.RegisterServerTx(container, svc.RPC()); err != nil {
+		return err
+	}
+	if err = rest.RegisterGateway(ctx, svc.Mux(), svc.Config().Rpc.Address()); err != nil {
+		return err
+	}
+	if err = rest.RegisterSwagger(svc.Mux()); err != nil {
+		return err
+	}
+	handlers.RegisterCatalogHandlersTx(container)
+	handlers.RegisterMallHandlersTx(container)
+	handlers.RegisterDomainEventHandlersTx(container)
+	if err = storespb.RegisterAsyncAPI(svc.Mux()); err != nil {
+		return err
+	}
+	startOutboxProcessor(ctx, outboxProcessor, svc.Logger())
 	return
 }
 
@@ -173,4 +208,13 @@ func registrations(reg registry.Registry) (err error) {
 	}
 
 	return
+}
+
+func startOutboxProcessor(ctx context.Context, outboxProcessor tm.OutboxProcessor, logger zerolog.Logger) {
+	go func() {
+		err := outboxProcessor.Start(ctx)
+		if err != nil {
+			logger.Error().Err(err).Msg("stores outbox processor encountered an error")
+		}
+	}()
 }

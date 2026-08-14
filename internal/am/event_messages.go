@@ -114,7 +114,7 @@ func (h eventMsgHandler) HandleMessage(ctx context.Context, msg IncomingMessage)
 		return err
 	}
 
-	// TODO either this should be a ddd.Event or the handler is a HandleMessage[am.EventMessage]
+	// TODO either this should be a ddd.Event or the handlers is a HandleMessage[am.EventMessage]
 	eventMsg := eventMessage{
 		id:         msg.ID(),
 		name:       eventName,

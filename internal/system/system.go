@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/nats-io/nats.go"
 	"github.com/rs/zerolog"
 	"github.com/stackus/errors"

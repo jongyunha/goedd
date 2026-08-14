@@ -20,12 +20,12 @@ func MessagePublisherWithMiddleware(publisher MessagePublisher, mws ...MessagePu
 	return applyMiddleware(publisher, mws...)
 }
 
-// MessageHandlerWithMiddleware builds a applyMiddleware chain around a handler
+// MessageHandlerWithMiddleware builds a applyMiddleware chain around a handlers
 //
 // Middleware are applied in reverse; this makes the first applyMiddleware
 // in the slice the outermost i.e. first to enter, last to exit
-// given: handler, A, B, C
-// result: A(B(C(handler)))
+// given: handlers, A, B, C
+// result: A(B(C(handlers)))
 func MessageHandlerWithMiddleware(handler MessageHandler, mws ...MessageHandlerMiddleware) MessageHandler {
 	return applyMiddleware(handler, mws...)
 }

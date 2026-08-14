@@ -1,6 +1,9 @@
 package storespb
 
-import "goedd/internal/registry"
+import (
+	"goedd/internal/registry"
+	"goedd/internal/registry/serdes"
+)
 
 const (
 	StoreAggregateChannel = "mallbots.stores.events.Store"
